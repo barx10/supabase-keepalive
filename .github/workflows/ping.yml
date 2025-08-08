@@ -2,23 +2,42 @@ name: Keep Supabase Alive
 
 on:
   schedule:
-    - cron: "0 6 */5 * *"   # hver 5. dag kl 06:00 UTC
-  workflow_dispatch:         # manuell kjøring
+    - cron: "0 6 */5 * *"   # Hver 5. dag kl 06:00 UTC
+  workflow_dispatch:         # Manuell kjøring fra Actions
 
 jobs:
   ping:
     runs-on: ubuntu-latest
     steps:
-      - name: Ping Supabase
-        run: |
-          STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
-            "${SUPABASE_URL}/rest/v1/blogg_tekst_renset?select=id&limit=1" \
-            -H "apikey: ${SUPABASE_ANON_KEY}" \
-            -H "Authorization: Bearer ${SUPABASE_ANON_KEY}")
-          echo "HTTP status: $STATUS"
-          if [ "$STATUS" -ge 400 ] || [ -z "$STATUS" ]; then
-            echo "Ping feilet"; exit 1
-          fi
+      - name: Install jq (for logging)
+        run: sudo apt-get update && sudo apt-get install -y jq
+
+      - name: Ping Supabase (hent 1 rad)
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+        run: |
+          echo "Kaller: ${SUPABASE_URL}/rest/v1/blogg_tekst_renset?select=id&limit=1"
+          RESPONSE=$(curl -s -w "\n%{http_code}" \
+            "${SUPABASE_URL}/rest/v1/blogg_tekst_renset?select=id&limit=1" \
+            -H "apikey: ${SUPABASE_ANON_KEY}" \
+            -H "Authorization: Bearer ${SUPABASE_ANON_KEY}")
+          
+          # Splitt ut body og status
+          HTTP_STATUS=$(echo "$RESPONSE" | tail -n1)
+          BODY=$(echo "$RESPONSE" | sed '$d')
+
+          echo "HTTP status: $HTTP_STATUS"
+          echo "Rått svar:"
+          echo "$BODY"
+
+          # Hvis JSON, vis antall elementer
+          if echo "$BODY" | jq . >/dev/null 2>&1; then
+            COUNT=$(echo "$BODY" | jq 'length')
+            echo "Antall elementer i JSON: $COUNT"
+          fi
+
+          # Fail hvis status er 4xx/5xx
+          if [ "$HTTP_STATUS" -ge 400 ]; then
+            echo "Ping feilet"; exit 1
+          fi
