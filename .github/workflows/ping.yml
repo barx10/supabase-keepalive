@@ -2,8 +2,8 @@ name: Keep Supabase Alive
 
 on:
   schedule:
-    - cron: "0 6 * * *"  # Kjører hver dag kl 06:00 UTC (08:00 norsk tid)
-  workflow_dispatch:      # Lar deg starte manuelt fra Actions-fanen
+    - cron: "0 6 */5 * *"  # Kjører hver 5. dag kl 06:00 UTC (08:00 norsk tid)
+  workflow_dispatch:        # Lar deg starte manuelt fra Actions-fanen
 
 jobs:
   ping:
