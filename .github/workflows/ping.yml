@@ -3,7 +3,7 @@ name: Keep Supabase Alive
 on:
   schedule:
     - cron: "0 6,18 * * *"   # Kjør kl 06:00 og 18:00 UTC (08:00 og 20:00 norsk tid)
-  workflow_dispatch:           # Manuell kjøring fra Actions
+  workflow_dispatch:
 
 jobs:
   ping:
@@ -17,27 +17,39 @@ jobs:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
         run: |
-          echo "Kaller: ${SUPABASE_URL}/rest/v1/blogg_tekst_renset?select=id&limit=1"
-          RESPONSE=$(curl -s -w "\n%{http_code}" \
-            "${SUPABASE_URL}/rest/v1/blogg_tekst_renset?select=id&limit=1" \
+          echo "=== Sjekker secrets ==="
+          echo "Bruker URL: $SUPABASE_URL"
+          echo "Key starter med: ${SUPABASE_ANON_KEY:0:10}..."
+
+          FULL_URL="${SUPABASE_URL}/rest/v1/blogg_tekst_renset?select=id&limit=1"
+          echo "Kaller: $FULL_URL"
+
+          # Hent respons med headere inkludert
+          RESPONSE=$(curl -s -i -w "\n%{http_code}" \
+            "$FULL_URL" \
             -H "apikey: ${SUPABASE_ANON_KEY}" \
-            -H "Authorization: Bearer ${SUPABASE_ANON_KEY}")
-          
-          # Splitt ut body og status
+            -H "Authorization: Bearer ${SUPABASE_ANON_KEY}" \
+            -H "Content-Type: application/json")
+
+          echo "=== Full respons fra Supabase ==="
+          echo "$RESPONSE"
+
+          # Trekk ut HTTP-statuskode
           HTTP_STATUS=$(echo "$RESPONSE" | tail -n1)
-          BODY=$(echo "$RESPONSE" | sed '$d')
-
           echo "HTTP status: $HTTP_STATUS"
-          echo "Rått svar:"
-          echo "$BODY"
 
-          # Hvis JSON, vis antall elementer
-          if echo "$BODY" | jq . >/dev/null 2>&1; then
-            COUNT=$(echo "$BODY" | jq 'length')
-            echo "Antall elementer i JSON: $COUNT"
+          # Stopp jobben hvis status er 4xx/5xx
+          if [ "$HTTP_STATUS" -ge 400 ]; then
+            echo "❌ Ping feilet med status $HTTP_STATUS"
+            exit 1
           fi
 
-          # Fail hvis status er 4xx/5xx
-          if [ "$HTTP_STATUS" -ge 400 ]; then
-            echo "Ping feilet"; exit 1
+          # Vis body og tell rader hvis JSON
+          BODY=$(echo "$RESPONSE" | sed '$d' | sed -n '/^\[/,$p')
+          echo "Body:"
+          echo "$BODY"
+
+          if echo "$BODY" | jq . >/dev/null 2>&1; then
+            COUNT=$(echo "$BODY" | jq 'length')
+            echo "✅ Antall elementer i JSON: $COUNT"
           fi
